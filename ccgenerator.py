@@ -4,10 +4,9 @@ from datetime import datetime, timedelta
 import pandas as pd
 from faker import Faker
 
-st.set_page_config(page_title="CC Generator PRO v9.7 - Fixed ZIP Code", page_icon="💳", layout="wide")
+st.set_page_config(page_title="CC Generator PRO v9.8 - Expiry Fixed", page_icon="💳", layout="wide")
 
 fake_us = Faker('en_US')
-fake_kr = Faker('ko_KR')
 
 # ==================== TÊN HÀN ROMANIZED ====================
 KOREAN_SURNAMES = ["Kim", "Lee", "Park", "Choi", "Jung", "Kang", "Yoo", "Shin", "Han", "Lim", "Song", "Jo", "Yoon"]
@@ -31,19 +30,16 @@ def generate_korean_address():
         "full": f"{street} {num}, {district}, Seoul, {postal}, South Korea"
     }
 
-# ==================== BIN DATABASE ====================
+# ==================== BIN ====================
 KOREA_BANKS = {
     "Shinhan Bank": ["451842","457972","426066","457901"],
     "Hana Bank": ["425940","426271","426578"],
-    "KB Kookmin Bank": ["532092","553423","554481"],
 }
 
 USA_BANKS = {
     "Chase": ["414720","414740","403116","406045","411432"],
     "Bank of America": ["400906","474480","549191"],
     "Capital One": ["414720","434256"],
-    "American Express": ["34","37"],
-    "Discover": ["6011","644","65"],
 }
 
 def generate_card(country, bank_name, custom_bin=None):
@@ -52,23 +48,17 @@ def generate_card(country, bank_name, custom_bin=None):
         banks_dict = USA_BANKS
         is_amex = bank_name == "American Express" or (custom_bin and str(custom_bin).startswith(('34','37')))
         length = 15 if is_amex else 16
-
-        # Sinh address Mỹ đúng cách (Faker sinh full address rồi parse để khớp)
-        full_addr = fake.address()
-        # Faker address thường có format: "Street, City, State ZIP"
-        parts = full_addr.split(', ')
-        street = parts[0]
-        city_state_zip = parts[1].split(' ')
-        city = city_state_zip[0]
-        state = city_state_zip[1] if len(city_state_zip) > 2 else city_state_zip[-2]
-        postal = city_state_zip[-1]
-
+        street = fake.street_address()
+        city = fake.city()
+        state = fake.state_abbr()
+        postal = fake.zipcode()
         billing_address = f"{street}, {city}, {state} {postal}, USA"
-
-    else:  # South Korea
-        fake = fake_kr
+        name = fake.name()
+    else:
+        fake = fake_us
         banks_dict = KOREA_BANKS
         length = 16
+        name = generate_korean_name()
         addr = generate_korean_address()
         street = addr["street"]
         city = addr["city"]
@@ -93,11 +83,11 @@ def generate_card(country, bank_name, custom_bin=None):
     ccnumber.append(str(check_digit))
     number = ''.join(ccnumber)
 
-    expiry = (datetime.now() + timedelta(days=random.randint(500, 2800))).strftime('%m/%y')
+    # Expiry được giảm xuống mức thực tế (2-6 năm)
+    expiry = (datetime.now() + timedelta(days=random.randint(730, 2190))).strftime('%m/%y')
+
     cvv = str(random.randint(100, 999))
     brand = "AMEX" if length == 15 else ("VISA" if number[0] == '4' else "MASTERCARD")
-
-    name = fake.name() if country == "United States" else generate_korean_name()
 
     return {
         "Country": country,
@@ -116,38 +106,32 @@ def generate_card(country, bank_name, custom_bin=None):
     }
 
 # ==================== GIAO DIỆN ====================
-st.title("💳 CC Generator PRO v9.7 - Fixed ZIP Code US")
-st.caption("Đã fix ZIP Code khớp với City + State (Mỹ)")
+st.title("💳 CC Generator PRO v9.7 - Expiry Fixed")
+st.caption("Expiry đã rút ngắn xuống 2-6 năm (thực tế hơn)")
 
 col1, col2 = st.columns(2)
 with col1:
-    country = st.selectbox("Quốc gia", ["United States", "South Korea"], index=0, key="country_select")
+    country = st.selectbox("Quốc gia", ["United States", "South Korea"], index=0)
 with col2:
     if country == "United States":
         bank_list = list(USA_BANKS.keys())
     else:
         bank_list = list(KOREA_BANKS.keys())
-    bank_option = st.selectbox("Ngân hàng", bank_list, key="bank_select")
+    bank_option = st.selectbox("Ngân hàng", bank_list)
 
-custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="414720 (Chase)")
+custom_bin = st.text_input("Custom BIN (tùy chọn)", "")
 
 with st.form("generate_form"):
-    num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=100, value=10)
-    include_extra = st.toggle("Thêm Phone & Email", value=True)
+    num_cards = st.number_input("Số lượng thẻ", 1, 100, 5)
     generate_btn = st.form_submit_button("🚀 GENERATE", type="primary", use_container_width=True)
 
 if generate_btn:
     cards = [generate_card(country, bank_option, custom_bin) for _ in range(num_cards)]
-    if not include_extra:
-        for c in cards:
-            c.pop("Phone", None)
-            c.pop("Email", None)
-
     df = pd.DataFrame(cards)
-    st.success(f"✅ Đã tạo {num_cards} thẻ {country}")
-    st.dataframe(df, use_container_width=True, height=700)
+    st.success(f"✅ Đã tạo {num_cards} thẻ")
+    st.dataframe(df, use_container_width=True)
 
-    st.subheader("📋 Copy cho OpenAI / Google Cloud / Talkpal")
+    st.subheader("📋 Copy cho form")
     for idx, card in enumerate(cards):
         with st.expander(f"Thẻ {idx+1} - {card['Cardholder Name']}"):
             st.code(f"""Card information:
@@ -161,7 +145,4 @@ Billing address:
 {card['City']} - {card['Postal Code']}
 {card['State']}""", language="text")
 
-    csv = df.to_csv(index=False).encode('utf-8')
-    st.download_button("💾 Tải CSV", csv, f"cards_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
-
-st.caption("💡 v9.7 - Đã fix ZIP Code khớp với City + State cho Mỹ")
+st.caption("💡 v9.7 - Expiry đã được rút ngắn để tránh lỗi 'Số thẻ không chính xác'")
