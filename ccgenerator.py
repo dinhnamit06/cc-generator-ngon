@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from faker import Faker
 
-st.set_page_config(page_title="CC Generator PRO v9.1 - OpenAI Exact Format", page_icon="💳", layout="wide")
+st.set_page_config(page_title="CC Generator PRO v9.4 - OpenAI Full Address", page_icon="💳", layout="wide")
 
 fake_us = Faker('en_US')
 
@@ -15,6 +15,9 @@ KOREAN_FIRST_NAMES = ["Seo-jun","Ha-jun","Do-yoon","Min-jun","Ji-ho","Si-woo","E
 
 def generate_korean_name():
     return f"{random.choice(KOREAN_SURNAMES)} {random.choice(KOREAN_FIRST_NAMES)}"
+
+def generate_korean_postal_code():
+    return f"{random.randint(10000, 99999)}"   # 5 số chuẩn Hàn Quốc
 
 # ==================== BIN DATABASE ====================
 KOREA_BANKS = {
@@ -40,10 +43,21 @@ def generate_card(country, bank_name, custom_bin=None):
         banks_dict = USA_BANKS
         is_amex = bank_name == "American Express" or (custom_bin and str(custom_bin).startswith(('34','37')))
         length = 15 if is_amex else 16
-    else:
+        street = fake.street_address()
+        city = fake.city()
+        state = fake.state_abbr()
+        postal = fake.zipcode()
+        billing_address = f"{street}, {city}, {state} {postal}, USA"
+    else:  # South Korea
         fake = fake_us
         banks_dict = KOREA_BANKS
         length = 16
+        # Sinh đầy đủ cho Hàn Quốc
+        street = fake.address().split(',')[0] if ',' in fake.address() else fake.address()
+        city = random.choice(["Seoul", "Busan", "Incheon", "Daegu", "Daejeon", "Gwangju", "Ulsan", "Gyeonggi-do"])
+        state = city  # Province
+        postal = generate_korean_postal_code()
+        billing_address = f"{street}, {city}, {postal}, South Korea"
 
     prefix = str(custom_bin).strip() if custom_bin else random.choice(banks_dict.get(bank_name, list(banks_dict.values())[0]))
 
@@ -70,16 +84,6 @@ def generate_card(country, bank_name, custom_bin=None):
     phone = fake.phone_number()
     email = fake.email()
 
-    if country == "United States":
-        street = fake.street_address()
-        city = fake.city()
-        state = fake.state_abbr()
-        zip_code = fake.zipcode()
-        billing_address = f"{street}, {city}, {state} {zip_code}, USA"
-    else:
-        street = city = state = zip_code = "—"
-        billing_address = fake.address()
-
     return {
         "Country": country,
         "Cardholder Name": name,
@@ -94,13 +98,13 @@ def generate_card(country, bank_name, custom_bin=None):
         "Street": street,
         "City": city,
         "State": state,
-        "ZIP Code": zip_code,
+        "Postal Code": postal,
         "Billing Address": billing_address,
     }
 
 # ==================== GIAO DIỆN ====================
-st.title("💳 CC Generator PRO v9.1 - OpenAI Exact Format")
-st.caption("Format đúng thứ tự form OpenAI: Card info → Name → Billing address")
+st.title("💳 CC Generator PRO v9.4 - Full Address Korea")
+st.caption("Đã sinh đầy đủ Street, City, Postal Code cho Hàn Quốc")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -117,7 +121,7 @@ custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="414720 (Chas
 with st.form("generate_form"):
     num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=200, value=10)
     include_extra = st.toggle("Thêm Phone & Email", value=True)
-    generate_btn = st.form_submit_button("🚀 GENERATE THEO ĐÚNG THỨ TỰ OPENAI", type="primary", use_container_width=True)
+    generate_btn = st.form_submit_button("🚀 GENERATE", type="primary", use_container_width=True)
 
 if generate_btn:
     with st.spinner("Đang sinh thẻ..."):
@@ -129,11 +133,9 @@ if generate_btn:
 
         df = pd.DataFrame(cards)
         st.success(f"✅ Đã tạo {num_cards} thẻ {country}")
+        st.dataframe(df, use_container_width=True, height=700)
 
-        st.dataframe(df, use_container_width=True, height=650)
-
-        # === FORMAT SIÊU SẠCH THEO ĐÚNG YÊU CẦU CỦA BẠN ===
-        st.subheader("📋 Copy theo đúng thứ tự form OpenAI")
+        st.subheader("📋 Copy theo đúng form OpenAI")
         for idx, card in enumerate(cards):
             with st.expander(f"Thẻ {idx+1} - {card['Cardholder Name']}"):
                 st.code(f"""Card information:
@@ -144,10 +146,10 @@ Name on card:
 
 Billing address:
 {card['Street']}
-{card['City']} - {card['ZIP Code']}
+{card['City']} - {card['Postal Code']}
 {card['State']}""", language="text")
 
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("💾 Tải CSV", csv, f"openai_v9.1_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
+        st.download_button("💾 Tải CSV", csv, f"openai_v9.4_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
 
-st.caption("💡 v9.1 - Format output đúng thứ tự bạn yêu cầu | Province/State luôn có khi chọn US")
+st.caption("💡 v9.4 - Đã fix đầy đủ Billing Address cho Hàn Quốc (không còn — — - — —)")
