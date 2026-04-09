@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from faker import Faker
 
-st.set_page_config(page_title="CC Generator PRO v9.4 - OpenAI Full Address", page_icon="💳", layout="wide")
+st.set_page_config(page_title="CC Generator PRO v9.5 - OpenAI Fixed Korea", page_icon="💳", layout="wide")
 
 fake_us = Faker('en_US')
 
@@ -16,8 +16,21 @@ KOREAN_FIRST_NAMES = ["Seo-jun","Ha-jun","Do-yoon","Min-jun","Ji-ho","Si-woo","E
 def generate_korean_name():
     return f"{random.choice(KOREAN_SURNAMES)} {random.choice(KOREAN_FIRST_NAMES)}"
 
-def generate_korean_postal_code():
-    return f"{random.randint(10000, 99999)}"   # 5 số chuẩn Hàn Quốc
+def generate_korean_address():
+    cities = ["Seoul", "Busan", "Incheon", "Daegu", "Daejeon", "Gwangju", "Ulsan"]
+    districts = ["Gangnam-gu", "Seocho-gu", "Jongno-gu", "Mapo-gu", "Yongsan-gu", "Songpa-gu"]
+    streets = ["Teheran-ro", "Gangnam-daero", "Seolleung-ro", "Yeoksam-ro", "Samseong-ro"]
+    street_num = random.randint(10, 999)
+    city = random.choice(cities)
+    district = random.choice(districts)
+    street = random.choice(streets)
+    postal = f"{random.randint(10000, 99999)}"
+    return {
+        "street": f"{street} {street_num}",
+        "city": f"{city}, {district}",
+        "postal": postal,
+        "billing_address": f"{street} {street_num}, {district}, {city}, {postal}, South Korea"
+    }
 
 # ==================== BIN DATABASE ====================
 KOREA_BANKS = {
@@ -52,12 +65,12 @@ def generate_card(country, bank_name, custom_bin=None):
         fake = fake_us
         banks_dict = KOREA_BANKS
         length = 16
-        # Sinh đầy đủ cho Hàn Quốc
-        street = fake.address().split(',')[0] if ',' in fake.address() else fake.address()
-        city = random.choice(["Seoul", "Busan", "Incheon", "Daegu", "Daejeon", "Gwangju", "Ulsan", "Gyeonggi-do"])
-        state = city  # Province
-        postal = generate_korean_postal_code()
-        billing_address = f"{street}, {city}, {postal}, South Korea"
+        addr = generate_korean_address()
+        street = addr["street"]
+        city = addr["city"]
+        state = city.split(",")[0] if "," in city else city
+        postal = addr["postal"]
+        billing_address = addr["billing_address"]
 
     prefix = str(custom_bin).strip() if custom_bin else random.choice(banks_dict.get(bank_name, list(banks_dict.values())[0]))
 
@@ -103,12 +116,12 @@ def generate_card(country, bank_name, custom_bin=None):
     }
 
 # ==================== GIAO DIỆN ====================
-st.title("💳 CC Generator PRO v9.4 - Full Address Korea")
-st.caption("Đã sinh đầy đủ Street, City, Postal Code cho Hàn Quốc")
+st.title("💳 CC Generator PRO v9.5 - Korea Civilian Address")
+st.caption("Đã sinh address dân sự thật cho Hàn Quốc (không còn DPO)")
 
 col1, col2 = st.columns(2)
 with col1:
-    country = st.selectbox("Quốc gia", ["United States", "South Korea"], index=0, key="country_select")
+    country = st.selectbox("Quốc gia", ["United States", "South Korea"], index=1, key="country_select")
 with col2:
     if country == "United States":
         bank_list = list(USA_BANKS.keys())
@@ -116,10 +129,10 @@ with col2:
         bank_list = list(KOREA_BANKS.keys())
     bank_option = st.selectbox("Ngân hàng", bank_list, key="bank_select")
 
-custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="414720 (Chase)")
+custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="426066 (Shinhan)")
 
 with st.form("generate_form"):
-    num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=200, value=10)
+    num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=100, value=5)
     include_extra = st.toggle("Thêm Phone & Email", value=True)
     generate_btn = st.form_submit_button("🚀 GENERATE", type="primary", use_container_width=True)
 
@@ -150,6 +163,6 @@ Billing address:
 {card['State']}""", language="text")
 
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("💾 Tải CSV", csv, f"openai_v9.4_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
+        st.download_button("💾 Tải CSV", csv, f"openai_v9.5_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
 
-st.caption("💡 v9.4 - Đã fix đầy đủ Billing Address cho Hàn Quốc (không còn — — - — —)")
+st.caption("💡 v9.5 - Address Hàn đã là địa chỉ dân sự thật (Seoul, Busan...)")
