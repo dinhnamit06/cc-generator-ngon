@@ -4,12 +4,12 @@ from datetime import datetime, timedelta
 import pandas as pd
 from faker import Faker
 
-st.set_page_config(page_title="CC Generator PRO v8.3 - BIN Validation", page_icon="💳", layout="wide")
+st.set_page_config(page_title="CC Generator PRO v8.6 - OpenAI Ready", page_icon="💳", layout="wide")
 
 fake_kr = Faker('ko_KR')
 fake_us = Faker('en_US')
 
-# ==================== BIN HIGH TRUST 2026 ====================
+# ==================== BIN DATABASE ====================
 KOREA_BANKS = {
     "All Korea": ["451842","457972","425940","426066","426271","457901","515594","532092","553423"],
     "Shinhan Bank": ["451842","457972","426066","457901"],
@@ -27,22 +27,6 @@ USA_BANKS = {
     "Discover": ["6011","644","65"],
 }
 
-def is_valid_bin(bin_input: str, country: str) -> tuple:
-    if not bin_input:
-        return True, ""
-    bin_str = bin_input.strip()
-    if not bin_str.isdigit():
-        return False, "❌ BIN chỉ được chứa chữ số (0-9)"
-    if len(bin_str) < 4 or len(bin_str) > 8:
-        return False, "❌ Độ dài BIN phải từ 4 đến 8 chữ số"
-    
-    banks_dict = USA_BANKS if country == "United States" else KOREA_BANKS
-    all_bins = [b for bins in banks_dict.values() for b in bins]
-    
-    if not any(bin_str.startswith(b) for b in all_bins):
-        return False, f"⚠️ BIN '{bin_str}' không phổ biến cho {country}. Vẫn có thể dùng được."
-    return True, "✅ BIN hợp lệ và được hỗ trợ"
-
 def generate_card(country, bank_name, custom_bin=None):
     if country == "United States":
         fake = fake_us
@@ -56,10 +40,10 @@ def generate_card(country, bank_name, custom_bin=None):
 
     prefix = str(custom_bin).strip() if custom_bin else random.choice(banks_dict.get(bank_name, list(banks_dict.values())[0]))
 
+    # LUHN
     ccnumber = list(prefix)
     while len(ccnumber) < length - 1:
         ccnumber.append(str(random.randint(0, 9)))
-    
     sum_ = 0
     for i, digit in enumerate(reversed(ccnumber)):
         d = int(digit)
@@ -67,7 +51,6 @@ def generate_card(country, bank_name, custom_bin=None):
             d *= 2
             if d > 9: d -= 9
         sum_ += d
-    
     check_digit = (10 - (sum_ % 10)) % 10
     ccnumber.append(str(check_digit))
     number = ''.join(ccnumber)
@@ -85,9 +68,13 @@ def generate_card(country, bank_name, custom_bin=None):
         city = fake.city()
         state = fake.state_abbr()
         zip_code = fake.zipcode()
-        address = f"{street}, {city}, {state} {zip_code}, USA"
+        billing_address = f"{street}, {city}, {state} {zip_code}, USA"
     else:
-        address = fake.address()
+        street = "N/A"
+        city = "N/A"
+        state = "N/A"
+        zip_code = "N/A"
+        billing_address = fake.address()
 
     return {
         "Country": country,
@@ -100,17 +87,20 @@ def generate_card(country, bank_name, custom_bin=None):
         "CVV": cvv,
         "Phone": phone,
         "Email": email,
-        "Billing Address": address,
+        "Street": street,
+        "City": city,
+        "State": state,
+        "ZIP Code": zip_code,
+        "Billing Address": billing_address,
     }
 
 # ==================== GIAO DIỆN ====================
-st.title("💳 CC Generator PRO v8.3 - BIN Validation")
-st.caption("Đã fix lỗi 'cards' not defined + BIN Validation")
+st.title("💳 CC Generator PRO v8.6 - OpenAI Payment Ready")
+st.caption("Đầy đủ Street, City, State, ZIP + Hướng dẫn copy cho OpenAI")
 
 col1, col2 = st.columns(2)
 with col1:
     country = st.selectbox("Quốc gia", ["United States", "South Korea"], index=0, key="country_select")
-
 with col2:
     if country == "United States":
         bank_list = list(USA_BANKS.keys())
@@ -120,24 +110,13 @@ with col2:
 
 custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="414720 (Chase)")
 
-# BIN Validation
-if custom_bin:
-    is_valid, msg = is_valid_bin(custom_bin, country)
-    if is_valid:
-        st.success(msg)
-    else:
-        st.warning(msg)
-
 with st.form("generate_form"):
-    num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=500, value=30)
-    include_extra = st.toggle("Thêm Phone, Email, Full Address", value=True)
-    generate_btn = st.form_submit_button("🚀 GENERATE HIGH TRUST", type="primary", use_container_width=True)
-
-# Biến cards được khởi tạo trước
-cards = []
+    num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=300, value=20)
+    include_extra = st.toggle("Thêm Phone & Email", value=True)
+    generate_btn = st.form_submit_button("🚀 GENERATE FOR OPENAI", type="primary", use_container_width=True)
 
 if generate_btn:
-    with st.spinner("Đang sinh thẻ high trust..."):
+    with st.spinner("Đang sinh thẻ..."):
         cards = []
         for _ in range(num_cards):
             card = generate_card(country, bank_option, custom_bin)
@@ -147,21 +126,25 @@ if generate_btn:
             cards.append(card)
 
         df = pd.DataFrame(cards)
-        st.success(f"✅ Đã tạo {num_cards} thẻ {country}")
-        st.dataframe(df, use_container_width=True, height=600)
+        st.success(f"✅ Đã tạo {num_cards} thẻ {country} - Sẵn sàng điền vào OpenAI")
+
+        st.dataframe(df, use_container_width=True, height=700)
 
         csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("💾 Tải CSV", csv, f"high_trust_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
+        st.download_button("💾 Tải CSV", csv, f"openai_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
 
-# History
-if 'history' not in st.session_state:
-    st.session_state.history = []
+        st.subheader("📋 Hướng dẫn điền form OpenAI (Copy từng cột)")
+        st.info("""
+        **Name on card**          → Cardholder Name  
+        **Card number**           → Số thẻ  
+        **Expiry**                → Expiry  
+        **CVV**                   → CVV  
+        **Street / Line 1**       → Street  
+        **City**                  → City  
+        **State**                 → State (chỉ US)  
+        **ZIP / Postal Code**     → ZIP Code  
+        **Country**               → Country  
+        **Purchasing as a business** → Để trống (không tick)
+        """)
 
-if cards:                                   # ← Đã fix lỗi ở đây
-    st.session_state.history.extend(cards)
-
-if st.session_state.history:
-    with st.expander("📜 Lịch sử các lần generate"):
-        st.dataframe(pd.DataFrame(st.session_state.history), use_container_width=True)
-
-st.caption("💡 v8.3 - Đã sửa lỗi NameError + BIN Validation + Realtime Bank Selection")
+st.caption("💡 v8.6 - Đã tách đầy đủ Street, City, State, ZIP theo yêu cầu của Stripe/OpenAI 2026")
