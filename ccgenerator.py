@@ -2,14 +2,13 @@ import streamlit as st
 import random
 from datetime import datetime, timedelta
 import pandas as pd
-import time
 from faker import Faker
 
-st.set_page_config(page_title="CC Generator PRO v9 - OpenAI Max Trust", page_icon="💳", layout="wide")
+st.set_page_config(page_title="CC Generator PRO v9.1 - OpenAI Exact Format", page_icon="💳", layout="wide")
 
 fake_us = Faker('en_US')
 
-# ==================== TÊN HÀN ROMANIZED (Hot 2025-2026) ====================
+# ==================== TÊN HÀN ROMANIZED ====================
 KOREAN_SURNAMES = ["Kim", "Lee", "Park", "Choi", "Jung", "Kang", "Yoo", "Shin", "Han", "Lim", "Song", "Jo", "Yoon"]
 KOREAN_FIRST_NAMES = ["Seo-jun","Ha-jun","Do-yoon","Min-jun","Ji-ho","Si-woo","Eun-woo","Tae-o","Ye-jun","Seon-woo",
                       "Seo-yun","Seo-ah","Ha-yoon","Ji-an","A-rin","Ha-eun","Ji-woo","Seo-a","Yi-seo","A-yun"]
@@ -35,7 +34,7 @@ USA_BANKS = {
     "Discover": ["6011","644","65"],
 }
 
-def generate_card(country, bank_name, custom_bin=None, used_bins=None):
+def generate_card(country, bank_name, custom_bin=None):
     if country == "United States":
         fake = fake_us
         banks_dict = USA_BANKS
@@ -46,15 +45,7 @@ def generate_card(country, bank_name, custom_bin=None, used_bins=None):
         banks_dict = KOREA_BANKS
         length = 16
 
-    # BIN Rotation
-    if custom_bin:
-        prefix = str(custom_bin).strip()
-    else:
-        available_bins = [b for bins in banks_dict.values() for b in bins]
-        if used_bins and len(used_bins) < len(available_bins):
-            prefix = random.choice([b for b in available_bins if b not in used_bins])
-        else:
-            prefix = random.choice(available_bins)
+    prefix = str(custom_bin).strip() if custom_bin else random.choice(banks_dict.get(bank_name, list(banks_dict.values())[0]))
 
     # LUHN
     ccnumber = list(prefix)
@@ -75,9 +66,7 @@ def generate_card(country, bank_name, custom_bin=None, used_bins=None):
     cvv = str(random.randint(1000, 9999)) if length == 15 else str(random.randint(100, 999))
     brand = "AMEX" if length == 15 else ("VISA" if number[0] == '4' else "MASTERCARD")
 
-    # Tên
     name = fake.name() if country == "United States" else generate_korean_name()
-
     phone = fake.phone_number()
     email = fake.email()
 
@@ -109,9 +98,9 @@ def generate_card(country, bank_name, custom_bin=None, used_bins=None):
         "Billing Address": billing_address,
     }
 
-# ==================== GIAO DIỆN V9 ====================
-st.title("💳 CC Generator PRO v9 - OpenAI Max Trust")
-st.caption("BIN Rotation + Random Delay + Export Siêu Sạch")
+# ==================== GIAO DIỆN ====================
+st.title("💳 CC Generator PRO v9.1 - OpenAI Exact Format")
+st.caption("Format đúng thứ tự form OpenAI: Card info → Name → Billing address")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -125,50 +114,40 @@ with col2:
 
 custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="414720 (Chase)")
 
-if st.button("🔥 OpenAI High Trust Preset (US + Chase)"):
-    st.session_state.country = "United States"
-    st.session_state.bank_option = "Chase"
-    st.rerun()
-
 with st.form("generate_form"):
-    num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=200, value=15)
+    num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=200, value=10)
     include_extra = st.toggle("Thêm Phone & Email", value=True)
-    generate_btn = st.form_submit_button("🚀 GENERATE MAX TRUST", type="primary", use_container_width=True)
+    generate_btn = st.form_submit_button("🚀 GENERATE THEO ĐÚNG THỨ TỰ OPENAI", type="primary", use_container_width=True)
 
 if generate_btn:
-    with st.spinner("Đang sinh thẻ (mô phỏng hành vi người thật)..."):
-        used_bins = set()
-        cards = []
-        progress_bar = st.progress(0)
-
-        for i in range(num_cards):
-            card = generate_card(country, bank_option, custom_bin, used_bins)
-            used_bins.add(card["BIN"])
-            if not include_extra:
-                card.pop("Phone", None)
-                card.pop("Email", None)
-            cards.append(card)
-
-            # Random delay simulation
-            time.sleep(random.uniform(0.08, 0.25))
-            progress_bar.progress((i + 1) / num_cards)
+    with st.spinner("Đang sinh thẻ..."):
+        cards = [generate_card(country, bank_option, custom_bin) for _ in range(num_cards)]
+        if not include_extra:
+            for c in cards:
+                c.pop("Phone", None)
+                c.pop("Email", None)
 
         df = pd.DataFrame(cards)
-        st.success(f"✅ Đã tạo {num_cards} thẻ {country} - Max Trust Mode")
+        st.success(f"✅ Đã tạo {num_cards} thẻ {country}")
+
         st.dataframe(df, use_container_width=True, height=650)
 
-        # Download CSV
-        csv = df.to_csv(index=False).encode('utf-8')
-        st.download_button("💾 Tải CSV", csv, f"openai_maxtrust_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
-
-        # Copy format siêu sạch cho OpenAI
-        st.subheader("📋 Copy 1 thẻ cho OpenAI (Siêu sạch)")
-        for idx, card in enumerate(cards[:5]):
+        # === FORMAT SIÊU SẠCH THEO ĐÚNG YÊU CẦU CỦA BẠN ===
+        st.subheader("📋 Copy theo đúng thứ tự form OpenAI")
+        for idx, card in enumerate(cards):
             with st.expander(f"Thẻ {idx+1} - {card['Cardholder Name']}"):
-                st.code(f"""Name on card: {card['Cardholder Name']}
-Card number: {card['Số thẻ']}
-Expiry: {card['Expiry']}
-CVV: {card['CVV']}
-Billing Address: {card['Billing Address']}""", language="text")
+                st.code(f"""Card information:
+{card['Số thẻ']}   {card['Expiry']}   {card['CVV']}
 
-st.caption("💡 v9 - BIN Rotation + Random Delay + Export Siêu Sạch + Tên Hàn Romanized")
+Name on card:
+{card['Cardholder Name']}
+
+Billing address:
+{card['Street']}
+{card['City']} - {card['ZIP Code']}
+{card['State']}""", language="text")
+
+        csv = df.to_csv(index=False).encode('utf-8')
+        st.download_button("💾 Tải CSV", csv, f"openai_v9.1_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
+
+st.caption("💡 v9.1 - Format output đúng thứ tự bạn yêu cầu | Province/State luôn có khi chọn US")
