@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 from faker import Faker
 
-st.set_page_config(page_title="CC Generator PRO v9.7 - US + Korea", page_icon="💳", layout="wide")
+st.set_page_config(page_title="CC Generator PRO v9.7 - Fixed ZIP Code", page_icon="💳", layout="wide")
 
 fake_us = Faker('en_US')
 fake_kr = Faker('ko_KR')
@@ -14,7 +14,7 @@ KOREAN_SURNAMES = ["Kim", "Lee", "Park", "Choi", "Jung", "Kang", "Yoo", "Shin", 
 KOREAN_FIRST_NAMES = ["Seo-jun","Ha-jun","Do-yoon","Min-jun","Ji-ho","Si-woo","Eun-woo","Tae-o","Ye-jun","Seon-woo",
                       "Seo-yun","Seo-ah","Ha-yoon","Ji-an","A-rin","Ha-eun","Ji-woo","Seo-a","Yi-seo","A-yun"]
 
-def generate_korean_name_romanized():
+def generate_korean_name():
     return f"{random.choice(KOREAN_SURNAMES)} {random.choice(KOREAN_FIRST_NAMES)}"
 
 def generate_korean_address():
@@ -36,7 +36,6 @@ KOREA_BANKS = {
     "Shinhan Bank": ["451842","457972","426066","457901"],
     "Hana Bank": ["425940","426271","426578"],
     "KB Kookmin Bank": ["532092","553423","554481"],
-    "BIN Trick (Reddit)": ["625814260209"]
 }
 
 USA_BANKS = {
@@ -47,30 +46,33 @@ USA_BANKS = {
     "Discover": ["6011","644","65"],
 }
 
-def generate_card(country, bank_name, custom_bin=None, name_mode="Romanized"):
+def generate_card(country, bank_name, custom_bin=None):
     if country == "United States":
         fake = fake_us
         banks_dict = USA_BANKS
         is_amex = bank_name == "American Express" or (custom_bin and str(custom_bin).startswith(('34','37')))
         length = 15 if is_amex else 16
-        street = fake.street_address()
-        city = fake.city()
-        state = fake.state_abbr()
-        postal = fake.zipcode()
+
+        # Sinh address Mỹ đúng cách (Faker sinh full address rồi parse để khớp)
+        full_addr = fake.address()
+        # Faker address thường có format: "Street, City, State ZIP"
+        parts = full_addr.split(', ')
+        street = parts[0]
+        city_state_zip = parts[1].split(' ')
+        city = city_state_zip[0]
+        state = city_state_zip[1] if len(city_state_zip) > 2 else city_state_zip[-2]
+        postal = city_state_zip[-1]
+
         billing_address = f"{street}, {city}, {state} {postal}, USA"
-        name = fake.name()
+
     else:  # South Korea
-        fake = fake_us
+        fake = fake_kr
         banks_dict = KOREA_BANKS
         length = 16
-        if name_mode == "Romanized":
-            name = generate_korean_name_romanized()
-        else:
-            name = fake_kr.name()
         addr = generate_korean_address()
         street = addr["street"]
         city = addr["city"]
-        state = city
+        state = "Seoul"
         postal = addr["postal"]
         billing_address = addr["full"]
 
@@ -95,6 +97,8 @@ def generate_card(country, bank_name, custom_bin=None, name_mode="Romanized"):
     cvv = str(random.randint(100, 999))
     brand = "AMEX" if length == 15 else ("VISA" if number[0] == '4' else "MASTERCARD")
 
+    name = fake.name() if country == "United States" else generate_korean_name()
+
     return {
         "Country": country,
         "Cardholder Name": name,
@@ -112,8 +116,8 @@ def generate_card(country, bank_name, custom_bin=None, name_mode="Romanized"):
     }
 
 # ==================== GIAO DIỆN ====================
-st.title("💳 CC Generator PRO v9.6 - US + Korea Dual")
-st.caption("Hỗ trợ cả Mỹ và Hàn Quốc | Có thể chọn Romanized hoặc Hangul")
+st.title("💳 CC Generator PRO v9.7 - Fixed ZIP Code US")
+st.caption("Đã fix ZIP Code khớp với City + State (Mỹ)")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -121,13 +125,11 @@ with col1:
 with col2:
     if country == "United States":
         bank_list = list(USA_BANKS.keys())
-        name_mode = "US"
     else:
         bank_list = list(KOREA_BANKS.keys())
-        name_mode = st.selectbox("Kiểu Tên & Địa chỉ Hàn", ["Romanized (Latin)", "Hangul (Chữ Hàn)"], index=0)
+    bank_option = st.selectbox("Ngân hàng", bank_list, key="bank_select")
 
-bank_option = st.selectbox("Ngân hàng", bank_list, key="bank_select")
-custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="414720 (Chase) hoặc 451842 (Shinhan)")
+custom_bin = st.text_input("Custom BIN (tùy chọn)", placeholder="414720 (Chase)")
 
 with st.form("generate_form"):
     num_cards = st.number_input("Số lượng thẻ", min_value=1, max_value=100, value=10)
@@ -135,8 +137,7 @@ with st.form("generate_form"):
     generate_btn = st.form_submit_button("🚀 GENERATE", type="primary", use_container_width=True)
 
 if generate_btn:
-    mode = name_mode if country == "South Korea" else "US"
-    cards = [generate_card(country, bank_option, custom_bin, mode) for _ in range(num_cards)]
+    cards = [generate_card(country, bank_option, custom_bin) for _ in range(num_cards)]
     if not include_extra:
         for c in cards:
             c.pop("Phone", None)
@@ -146,7 +147,7 @@ if generate_btn:
     st.success(f"✅ Đã tạo {num_cards} thẻ {country}")
     st.dataframe(df, use_container_width=True, height=700)
 
-    st.subheader("📋 Copy cho OpenAI / Talkpal")
+    st.subheader("📋 Copy cho OpenAI / Google Cloud / Talkpal")
     for idx, card in enumerate(cards):
         with st.expander(f"Thẻ {idx+1} - {card['Cardholder Name']}"):
             st.code(f"""Card information:
@@ -163,4 +164,4 @@ Billing address:
     csv = df.to_csv(index=False).encode('utf-8')
     st.download_button("💾 Tải CSV", csv, f"cards_{country.lower()}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv", "text/csv")
 
-st.caption("💡 v9.6 - Đã thêm lại United States + lựa chọn Romanized / Hangul cho Hàn Quốc")
+st.caption("💡 v9.7 - Đã fix ZIP Code khớp với City + State cho Mỹ")
